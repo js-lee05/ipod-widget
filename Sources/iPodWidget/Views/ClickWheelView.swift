@@ -18,22 +18,22 @@ struct ClickWheelView: View {
         return GeometryReader { geo in
             let center = CGPoint(x: geo.size.width / 2, y: geo.size.height / 2)
             ZStack {
-                // Matte ring set flush into the body: faint top shade, thin dark seam.
+                // Ring set into the face: darker toward the top, inner shadow, lip lit from below.
                 Circle()
                     .fill(
-                        LinearGradient(colors: [Color(face.adjusted(by: -0.04)), Color(face.adjusted(by: 0.03))], startPoint: .top, endPoint: .bottom)
-                            .shadow(.inner(color: .black.opacity(0.15), radius: 2, y: 1))
+                        LinearGradient(colors: [Color(face.adjusted(by: -0.1)), Color(face.adjusted(by: 0.03))], startPoint: .top, endPoint: .bottom)
+                            .shadow(.inner(color: .black.opacity(0.28), radius: 3.5, y: 2.5))
                     )
-                    .overlay(Circle().strokeBorder(Color.black.opacity(0.14), lineWidth: 0.75))
+                    .overlay(Circle().strokeBorder(LinearGradient(colors: [.black.opacity(0.2), .white.opacity(0.9)], startPoint: .top, endPoint: .bottom), lineWidth: 1))
                     .contentShape(Circle())
                     .gesture(rotation(center: center))
                 labels
                     .allowsHitTesting(false)
-                // Slightly convex button in the body color, lit from the top.
+                // Convex button in the body color: lit on top, casting a soft shadow into the ring.
                 Circle()
-                    .fill(LinearGradient(colors: [Color(button.adjusted(by: 0.1)), Color(button.adjusted(by: -0.06))], startPoint: .top, endPoint: .bottom))
-                    .overlay(Circle().strokeBorder(LinearGradient(colors: [.white.opacity(0.5), .black.opacity(0.2)], startPoint: .top, endPoint: .bottom), lineWidth: 0.75))
-                    .shadow(color: .black.opacity(0.18), radius: 1.5, y: 1)
+                    .fill(LinearGradient(colors: [Color(button.adjusted(by: 0.15)), Color(button.adjusted(by: -0.08))], startPoint: .top, endPoint: .bottom))
+                    .overlay(Circle().strokeBorder(LinearGradient(colors: [.white.opacity(0.8), .black.opacity(0.15)], startPoint: .top, endPoint: .bottom), lineWidth: 1))
+                    .shadow(color: .black.opacity(0.3), radius: 3, y: 2)
                     .frame(width: Layout.centerButtonDiameter, height: Layout.centerButtonDiameter)
                     .contentShape(Circle())
                     .onTapGesture(perform: onCenter)
@@ -43,7 +43,7 @@ struct ClickWheelView: View {
 
     private var labels: some View {
         VStack {
-            Text("MENU").font(.system(size: 10, weight: .bold))
+            Text("MENU").font(.system(size: 11, weight: .bold))
             Spacer()
             HStack {
                 Image(systemName: "backward.end.alt.fill")
@@ -53,9 +53,9 @@ struct ClickWheelView: View {
             Spacer()
             Image(systemName: "playpause.fill")
         }
-        .font(.system(size: 10))
+        .font(.system(size: 11))
         .foregroundStyle(Color(style.colors.wheelLabel))
-        .padding(11)
+        .padding(12)
     }
 
     private func rotation(center: CGPoint) -> some Gesture {

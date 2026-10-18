@@ -8,16 +8,19 @@ enum Layout {
     static var windowSize: CGSize {
         CGSize(width: deviceSize.width + shadowMargin * 2, height: deviceSize.height + shadowMargin * 2)
     }
-    static let bodyCornerRadius: CGFloat = 18
-    static let bodyPadding: CGFloat = 16
+    static let bodyCornerRadius: CGFloat = 30
+    /// Width of the rounded edge that rolls away from the flat face.
+    static let bodyRimWidth: CGFloat = 11
+    static let screenTopInset: CGFloat = 26
+    static let screenSideInset: CGFloat = 30
+    static let screenFrameWidth: CGFloat = 2
     static let titleBarHeight: CGFloat = 22
-    static let rowHeight: CGFloat = 24
+    static let rowHeight: CGFloat = 22
     static let visibleRows = 6
     static var screenHeight: CGFloat { titleBarHeight + rowHeight * CGFloat(visibleRows) }
-    static let bezelWidth: CGFloat = 7
-    static let screenToWheelSpacing: CGFloat = 30
-    static let wheelDiameter: CGFloat = 158
-    static let centerButtonDiameter: CGFloat = 60
+    static let screenToWheelSpacing: CGFloat = 22
+    static let wheelDiameter: CGFloat = 176
+    static let centerButtonDiameter: CGFloat = 64
     static let artworkSize: CGFloat = 54
 }
 
