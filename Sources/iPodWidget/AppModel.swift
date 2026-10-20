@@ -140,8 +140,9 @@ final class AppModel: ObservableObject {
             }
         case .playlist(let playlist):
             await pushLoaded(kind: .playlist, title: playlist.name) {
-                try await self.tracks(in: .playlist(id: playlist.id))
-                    .map { MenuItem($0.title, action: .playTrack(id: $0.id, container: .playlist(id: playlist.id))) }
+                try await self.tracks(in: .playlist(id: playlist.id)).enumerated().map { offset, track in
+                    MenuItem(track.title, action: .playTrack(id: track.id, position: offset + 1, container: .playlist(id: playlist.id)))
+                }
             }
         case .artists:
             await pushLoaded(kind: .artists, title: "Artists") {
@@ -152,16 +153,16 @@ final class AppModel: ObservableObject {
         case .artist(let name):
             await pushLoaded(kind: .artist, title: name) {
                 try await self.sortedLibrarySongs().filter { $0.artist == name }
-                    .map { MenuItem($0.title, action: .playTrack(id: $0.id, container: .library)) }
+                    .map { MenuItem($0.title, action: .playTrack(id: $0.id, position: 1, container: .library)) }
             }
         case .songs:
             await pushLoaded(kind: .songs, title: "Songs") {
                 try await self.sortedLibrarySongs()
-                    .map { MenuItem($0.title, action: .playTrack(id: $0.id, container: .library)) }
+                    .map { MenuItem($0.title, action: .playTrack(id: $0.id, position: 1, container: .library)) }
             }
-        case .playTrack(let id, let container):
+        case .playTrack(let id, let position, let container):
             do {
-                try await music.perform(try MusicScripts.play(trackID: id, in: container))
+                try await music.perform(try MusicScripts.play(trackID: id, position: position, in: container))
                 showNowPlaying()
             } catch {
                 report(error)

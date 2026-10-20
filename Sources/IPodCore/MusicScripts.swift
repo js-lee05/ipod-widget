@@ -3,12 +3,18 @@ import Foundation
 /// Raised when a value would be unsafe to embed in AppleScript source.
 public enum MusicScriptError: Error, Equatable {
     case invalidPersistentID(String)
+    case invalidPosition(Int)
 }
 
 /// AppleScript sources that drive Music.app. Output formats match `MusicParser`.
 public enum MusicScripts {
     private static let maxPersistentIDLength = 32
     private static let volumeRange = 0...100
+    /// Polls (0.25 s each) to wait for a streamed track to start before giving up on it.
+    private static let startPolls = 40
+
+    /// Error number raised when the requested track did not end up playing.
+    public static let trackNotStartedError = 9001
 
     /// Player status: 12 fields joined by ASCII 31. Track fields are empty when stopped.
     public static let status = """
@@ -71,9 +77,59 @@ public enum MusicScripts {
     }
 
     /// Plays a track so that playback continues through `container`.
-    public static func play(trackID: String, in container: Container) throws -> String {
+    /// `position` is the track's 1-based place in a playlist; it is ignored for the library.
+    public static func play(trackID: String, position: Int, in container: Container) throws -> String {
         try validate(trackID)
-        return #"tell application "Music" to play (first track of \#(try reference(container)) whose persistent ID is "\#(trackID)")"#
+        switch container {
+        case .library:
+            return #"tell application "Music" to play (first track of library playlist 1 whose persistent ID is "\#(trackID)")"#
+        case .playlist(let playlistID):
+            guard position >= 1 else { throw MusicScriptError.invalidPosition(position) }
+            return try playInPlaylist(trackID: trackID, playlistID: playlistID, muteWhileSkipping: position > 1)
+        }
+    }
+
+    /// Music ignores `play <track>` for Apple Music (streamed) tracks, but `play <playlist>` works.
+    /// So start the playlist muted and unshuffled, skip forward to the track while waiting for each
+    /// one to load, then restore volume and shuffle. Raises `trackNotStartedError` if it never arrives.
+    private static func playInPlaylist(trackID: String, playlistID: String, muteWhileSkipping: Bool) throws -> String {
+        let playlist = try reference(.playlist(id: playlistID))
+        return """
+            tell application "Music"
+                set p to \(playlist)
+                set savedVolume to sound volume
+                set savedShuffle to shuffle enabled
+                set reached to false
+                try
+                    if \(muteWhileSkipping) then set sound volume to 0
+                    set shuffle enabled to false
+                    play p
+                    repeat \(startPolls) times
+                        delay 0.25
+                        if player state is playing then exit repeat
+                    end repeat
+                    -- Skip until the track arrives rather than a fixed count:
+                    -- Music silently skips tracks it cannot play.
+                    repeat (count of tracks of p) times
+                        if persistent ID of current track is "\(trackID)" then exit repeat
+                        set prevID to persistent ID of current track
+                        next track
+                        repeat \(startPolls) times
+                            delay 0.25
+                            try
+                                if persistent ID of current track is not prevID and player state is playing then exit repeat
+                            end try
+                        end repeat
+                    end repeat
+                    set reached to (persistent ID of current track is "\(trackID)")
+                end try
+                -- Stop rather than leave some other track playing at full volume.
+                if not reached then pause
+                set sound volume to savedVolume
+                set shuffle enabled to savedShuffle
+                if not reached then error "Track did not start" number \(trackNotStartedError)
+            end tell
+            """
     }
 
     public static func setVolume(_ volume: Int) -> String {

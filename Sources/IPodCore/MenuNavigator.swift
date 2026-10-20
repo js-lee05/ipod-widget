@@ -6,7 +6,8 @@ public enum MenuAction: Equatable, Sendable {
     case music, playlists, artists, songs, settings
     case playlist(Playlist)
     case artist(String)
-    case playTrack(id: String, container: Container)
+    /// `position` is the 1-based place of the track in `container`.
+    case playTrack(id: String, position: Int, container: Container)
     case shuffleSongs, toggleShuffle, cycleRepeat, toggleBacklight, nowPlaying
 }
 
