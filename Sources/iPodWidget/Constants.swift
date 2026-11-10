@@ -43,6 +43,19 @@ enum Input {
 
 enum Defaults {
     static let windowAutosaveName = "iPodWidgetWindow"
+    static let musicSourceKey = "musicSource"
 }
 
 let log = Logger(subsystem: "local.ipodwidget", category: "app")
+
+/// API Server plugin of the YouTube Music desktop app.
+enum YouTubeMusicAPI {
+    /// The plugin's default port; it listens on all interfaces, so loopback reaches it.
+    static let baseURL = URL(string: "http://127.0.0.1:26538/")!
+    /// Name shown in the app's approval dialog.
+    static let clientID = "ipod-widget"
+    static let keychainService = "local.ipodwidget.youtube-music"
+    static let requestTimeout: TimeInterval = 3
+    /// The auth request stays open until the user answers the approval dialog.
+    static let authTimeout: TimeInterval = 120
+}

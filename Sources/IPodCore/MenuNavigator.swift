@@ -9,6 +9,9 @@ public enum MenuAction: Equatable, Sendable {
     /// `position` is the 1-based place of the track in `container`.
     case playTrack(id: String, position: Int, container: Container)
     case shuffleSongs, toggleShuffle, cycleRepeat, toggleBacklight, nowPlaying
+    case queue
+    /// Jumps to the 0-based `index` of the YouTube Music queue.
+    case playQueueItem(index: Int)
 }
 
 public struct MenuItem: Equatable, Sendable {
@@ -26,7 +29,7 @@ public struct MenuItem: Equatable, Sendable {
 /// One screen of the iPod menu, with its own selection and scroll offset.
 public struct MenuPage: Equatable, Sendable {
     public enum Kind: Equatable, Sendable {
-        case root, music, playlists, playlist, artists, artist, songs, settings, message
+        case root, music, playlists, playlist, artists, artist, songs, settings, message, queue
     }
 
     public let kind: Kind

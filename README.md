@@ -1,6 +1,6 @@
 # iPod Widget
 
-맥 바탕화면에 iPod classic 모양의 위젯을 띄우고, 클릭휠로 Apple Music(음악 앱)을 조작하는 macOS 앱입니다.
+맥 바탕화면에 iPod classic 모양의 위젯을 띄우고, 클릭휠로 Apple Music(음악 앱) 또는 YouTube Music을 조작하는 macOS 앱입니다.
 
 ![iPod Widget 테마 예시](docs/screenshot.png)
 
@@ -18,13 +18,15 @@
   - `Shuffle Songs`: 보관함 전체를 섞어서 재생합니다.
   - `Backlight`: 화면 백라이트를 켜고 끕니다.
   - `Now Playing`: 재생 중일 때만 나타나며, 곡 정보·앨범아트·진행바를 보여줍니다.
+- **연동 플랫폼 선택**: 메뉴바 아이콘 → `Customize…` → `Music Source`에서 Apple Music과 YouTube Music 중 하나를 고릅니다. 선택은 저장됩니다.
 - **디자인 변경**: 메뉴바 아이콘 → `Customize…`에서 기기 색상과 화면 색상을 바꿀 수 있습니다. 프리셋과 색상 피커를 모두 지원하고, 휠은 항상 흰색, 가운데 버튼은 기기 색을 따릅니다.
 
 ## 요구 사항
 
 - macOS 14 이상
 - Xcode(Swift 툴체인 포함)
-- 음악 앱(macOS 기본 앱)
+- 음악 앱(macOS 기본 앱) — Apple Music 연동 시
+- [YouTube Music 데스크톱 앱](https://github.com/th-ch/youtube-music) — YouTube Music 연동 시
 
 ## 빌드와 실행
 
@@ -47,15 +49,28 @@ open build/iPodWidget.app
 
 거부했다면 시스템 설정 → 개인정보 보호 및 보안 → 자동화에서 iPod Widget 아래의 `음악`을 켜세요. 앱을 다시 빌드하면 서명이 바뀌어 권한을 다시 물을 수 있습니다.
 
+### YouTube Music 연동
+
+1. YouTube Music 데스크톱 앱을 설치하고 실행합니다.
+2. 그 앱의 메뉴 → 플러그인 → `API Server`를 켭니다. 포트는 기본값(26538)을 그대로 둡니다.
+3. 위젯의 `Customize…`에서 `YouTube Music`을 고릅니다.
+4. YouTube Music 앱에 `ipod-widget` 접근을 허용할지 묻는 창이 뜨면 허용합니다. 받은 토큰은 키체인에 저장되어 다음부터는 묻지 않습니다.
+
+거부했다면 `Customize…`에서 Apple Music으로 바꿨다가 다시 YouTube Music을 고르면 창이 다시 뜹니다.
+
 ## 동작 방식
 
 위젯은 소리를 직접 재생하지 않습니다. AppleScript로 음악 앱에 명령(재생, 다음 곡, 볼륨 등)을 보내고, 음악 앱이 켜져 있는 동안 1초마다 재생 상태를 받아와 화면에 표시합니다. 음악 앱이 꺼져 있으면 상태를 조회하지 않습니다(조회만 해도 음악 앱이 켜지기 때문입니다).
+
+YouTube Music은 데스크톱 앱의 API Server 플러그인(`http://127.0.0.1:26538/api/v1`)에 HTTP 요청을 보내 같은 방식으로 조작·조회합니다.
 
 ## 제한 사항
 
 - 메뉴에는 음악 앱 **보관함에 있는 곡**만 나옵니다. Apple Music 곡은 "보관함에 추가"를 해야 보입니다.
 - `Artists`와 `Songs`에서 곡을 고르면, 그다음 곡은 위젯 목록 순서가 아니라 보관함 순서대로 이어집니다. 원하는 순서대로 들으려면 `Playlists`를 사용하세요.
 - 아티스트 정보가 비어 있는 곡은 `Artists`에 나오지 않습니다(`Songs`에서는 보입니다).
+- YouTube Music에서는 보관함 목록(Playlists/Artists/Songs)과 `Shuffle Songs`를 쓸 수 없습니다. `Music` 메뉴에는 현재 재생 대기열이 나오며, 곡을 고르면 그 곡으로 이동합니다. 재생할 플레이리스트는 YouTube Music 앱에서 고르세요.
+- YouTube Music의 대기열 응답은 YouTube 내부 데이터 형식이라, YouTube가 형식을 바꾸면 대기열 목록이 나오지 않을 수 있습니다.
 
 ## 프로젝트 구조
 
@@ -67,10 +82,13 @@ Sources/
     MenuNavigator.swift  메뉴 이동·스크롤 로직
     Theme.swift          테마 모델, 프리셋, 색 계산
     Models.swift         재생 상태·곡·플레이리스트 모델
+    YouTubeMusic.swift   연동 플랫폼 모델, YouTube Music API 응답 파싱
   iPodWidget/        macOS 앱
     AppDelegate.swift    위젯 창, 메뉴바 아이콘, Customize 창
     AppModel.swift       휠 입력 처리, 상태 조회, 메뉴 동작
     MusicController.swift AppleScript 실행·오류 처리
+    PlayerBackend.swift  플랫폼 공통 재생 조작 인터페이스, Apple Music 구현
+    YouTubeMusicClient.swift YouTube Music API 호출, 토큰(키체인) 관리
     ThemeStore.swift     테마 저장(UserDefaults)
     Views/               iPod 본체·화면·클릭휠·설정 창
 Tests/IPodCoreTests/ 단위 테스트
