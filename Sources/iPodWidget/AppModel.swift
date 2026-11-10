@@ -15,20 +15,54 @@ final class AppModel: ObservableObject {
     @Published private(set) var backlightOn = true
     @Published private(set) var notice: String?
     @Published private(set) var volumeVisibleUntil = Date.distantPast
+    @Published private(set) var source: MusicSource
 
     private let music = MusicController()
+    private let youTube = YouTubeMusicClient()
+    private let defaults: UserDefaults
     private var pollTask: Task<Void, Never>?
     private var artworkTrackID: String?
     private var scrollAccumulator: CGFloat = 0
 
-    init() {
-        navigator = MenuNavigator(
-            root: MenuPage(kind: .root, title: "iPod", items: Self.rootItems(hasTrack: false)),
-            visibleRows: Layout.visibleRows
-        )
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+        let source = defaults.string(forKey: Defaults.musicSourceKey).flatMap(MusicSource.init) ?? .appleMusic
+        self.source = source
+        navigator = Self.rootNavigator(source: source)
     }
 
     var screenTitle: String { showingNowPlaying ? "Now Playing" : navigator.current.title }
+
+    private var player: PlayerBackend {
+        switch source {
+        case .appleMusic: return music
+        case .youtubeMusic: return youTube
+        }
+    }
+
+    /// Switches the controlled app, returning to the root menu.
+    func setSource(_ newSource: MusicSource) {
+        guard newSource != source else { return }
+        source = newSource
+        defaults.set(newSource.rawValue, forKey: Defaults.musicSourceKey)
+        navigator = Self.rootNavigator(source: newSource)
+        showingNowPlaying = false
+        nowPlaying = nil
+        artwork = nil
+        artworkTrackID = nil
+        notice = nil
+        if newSource == .youtubeMusic {
+            Task { await youTube.allowAccessRequest() }
+        }
+        Task { await refresh() }
+    }
+
+    private static func rootNavigator(source: MusicSource) -> MenuNavigator {
+        MenuNavigator(
+            root: MenuPage(kind: .root, title: "iPod", items: rootItems(hasTrack: false, source: source)),
+            visibleRows: Layout.visibleRows
+        )
+    }
 
     // MARK: Polling
 
@@ -42,34 +76,39 @@ final class AppModel: ObservableObject {
     }
 
     func refresh() async {
-        guard music.isRunning else {
-            nowPlaying = nil
-            artwork = nil
-            artworkTrackID = nil
-            notice = "Music not running"
-            syncMenus()
-            return
-        }
+        let polled = source
+        let player = player
         do {
-            let status = try MusicParser.nowPlaying(try await music.text(MusicScripts.status))
+            let status = try await player.status()
+            guard source == polled else { return }  // source switched while waiting
             nowPlaying = status
             notice = nil
             if status.trackID != artworkTrackID {
                 artworkTrackID = status.trackID
-                artwork = await loadArtwork(hasTrack: status.trackID != nil)
+                let image = await loadArtwork(from: player, hasTrack: status.trackID != nil)
+                guard source == polled else { return }
+                artwork = image
             }
+        } catch MusicError.notRunning {
+            guard source == polled else { return }
+            nowPlaying = nil
+            artwork = nil
+            artworkTrackID = nil
+            notice = "\(source.displayName) not running"
         } catch {
+            guard source == polled else { return }
             report(error)
         }
         syncMenus()
     }
 
-    private func loadArtwork(hasTrack: Bool) async -> NSImage? {
+    private func loadArtwork(from player: PlayerBackend, hasTrack: Bool) async -> NSImage? {
         guard hasTrack else { return nil }
         do {
-            return NSImage(data: try await music.data(MusicScripts.artwork))
-        } catch MusicError.script {
-            return nil  // track has no artwork
+            return try await player.artwork()
+        } catch let error as URLError {
+            log.warning("Artwork download failed: \(error.code.rawValue)")
+            return nil
         } catch {
             report(error)
             return nil
@@ -77,7 +116,7 @@ final class AppModel: ObservableObject {
     }
 
     private func syncMenus() {
-        navigator.updateItems(of: .root, to: Self.rootItems(hasTrack: nowPlaying?.trackID != nil))
+        navigator.updateItems(of: .root, to: Self.rootItems(hasTrack: nowPlaying?.trackID != nil, source: source))
         navigator.updateItems(of: .settings, to: Self.settingsItems(nowPlaying))
     }
 
@@ -89,7 +128,7 @@ final class AppModel: ObservableObject {
             status.volume = min(max(status.volume + steps * Input.volumeStep, 0), 100)
             nowPlaying = status
             volumeVisibleUntil = Date().addingTimeInterval(Timing.volumeOverlay)
-            command(MusicScripts.setVolume(status.volume))
+            command { try await $0.setVolume(status.volume) }
         } else {
             navigator.move(by: steps)
         }
@@ -108,9 +147,9 @@ final class AppModel: ObservableObject {
         switch button {
         case .menu:
             if showingNowPlaying { showingNowPlaying = false } else { navigator.pop() }
-        case .previous: command(MusicScripts.previousTrack)
-        case .next: command(MusicScripts.nextTrack)
-        case .playPause: command(MusicScripts.playPause)
+        case .previous: command { try await $0.previousTrack() }
+        case .next: command { try await $0.nextTrack() }
+        case .playPause: command { try await $0.playPause() }
         }
     }
 
@@ -125,6 +164,19 @@ final class AppModel: ObservableObject {
         switch action {
         case .none:
             break
+        case .music where source == .youtubeMusic, .queue:
+            await pushLoaded(kind: .queue, title: "Queue") {
+                try await self.youTube.queue().enumerated().map { offset, item in
+                    MenuItem(item.title, action: .playQueueItem(index: offset))
+                }
+            }
+        case .playQueueItem(let index):
+            do {
+                try await youTube.playQueueItem(at: index)
+                showNowPlaying()
+            } catch {
+                report(error)
+            }
         case .music:
             navigator.push(MenuPage(kind: .music, title: "Music", items: [
                 MenuItem("Playlists", chevron: true, action: .playlists),
@@ -168,12 +220,14 @@ final class AppModel: ObservableObject {
                 report(error)
             }
         case .shuffleSongs:
-            command(MusicScripts.shuffleAll)
+            command { [music] _ in try await music.perform(MusicScripts.shuffleAll) }
             showNowPlaying()
         case .toggleShuffle:
-            command(MusicScripts.setShuffle(!(nowPlaying?.shuffle ?? false)))
+            let current = nowPlaying?.shuffle ?? false
+            command { try await $0.toggleShuffle(from: current) }
         case .cycleRepeat:
-            command(MusicScripts.setRepeat((nowPlaying?.repeatMode ?? .off).next))
+            let current = nowPlaying?.repeatMode ?? .off
+            command { try await $0.setRepeat(current.next, from: current) }
         case .toggleBacklight:
             backlightOn.toggle()
         case .nowPlaying:
@@ -204,11 +258,12 @@ final class AppModel: ObservableObject {
         }
     }
 
-    /// Sends a fire-and-forget command, then refreshes the status.
-    private func command(_ source: String) {
+    /// Sends a fire-and-forget command to the current player, then refreshes the status.
+    private func command(_ action: @escaping (PlayerBackend) async throws -> Void) {
+        let player = player
         Task {
             do {
-                try await music.perform(source)
+                try await action(player)
             } catch {
                 report(error)
             }
@@ -218,6 +273,17 @@ final class AppModel: ObservableObject {
 
     private func report(_ error: Error) {
         switch error {
+        case MusicError.notRunning:
+            notice = "\(source.displayName) not running"
+        case MusicError.accessDenied:
+            notice = "Allow iPod Widget in YouTube Music"
+            log.warning("YouTube Music denied API access")
+        case MusicError.http(let status):
+            notice = "YouTube Music error \(status)"
+            log.error("YouTube Music API returned HTTP \(status)")
+        case let error as URLError:
+            notice = "YouTube Music unreachable"
+            log.error("YouTube Music request failed: \(error.code.rawValue)")
         case MusicError.permissionDenied:
             notice = "Allow Music in Settings > Privacy > Automation"
             log.warning("Automation permission for Music denied")
@@ -232,13 +298,14 @@ final class AppModel: ObservableObject {
 
     // MARK: Menus
 
-    private static func rootItems(hasTrack: Bool) -> [MenuItem] {
+    private static func rootItems(hasTrack: Bool, source: MusicSource) -> [MenuItem] {
         var items = [
             MenuItem("Music", chevron: true, action: .music),
             MenuItem("Settings", chevron: true, action: .settings),
-            MenuItem("Shuffle Songs", action: .shuffleSongs),
-            MenuItem("Backlight", action: .toggleBacklight),
         ]
+        // Shuffling the whole library needs library access, which only Music.app offers.
+        if source == .appleMusic { items.append(MenuItem("Shuffle Songs", action: .shuffleSongs)) }
+        items.append(MenuItem("Backlight", action: .toggleBacklight))
         if hasTrack { items.append(MenuItem("Now Playing", chevron: true, action: .nowPlaying)) }
         return items
     }

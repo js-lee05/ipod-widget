@@ -1,8 +1,12 @@
 import AppKit
 
 enum MusicError: Error {
+    case notRunning
     case permissionDenied
     case script(code: Int, message: String)
+    /// YouTube Music refused this app in its approval dialog.
+    case accessDenied
+    case http(status: Int)
 }
 
 /// Runs AppleScript against Music.app on a single serial queue (NSAppleScript is not thread-safe).

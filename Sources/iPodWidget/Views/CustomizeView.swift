@@ -1,14 +1,21 @@
 import IPodCore
 import SwiftUI
 
-/// Settings window content: body color and screen color.
+/// Settings window content: music source, body color and screen color.
 struct CustomizeView: View {
     private static let swatchSize: CGFloat = 26
 
     @ObservedObject var store: ThemeStore
+    @ObservedObject var model: AppModel
 
     var body: some View {
         Form {
+            Section("Music Source") {
+                Picker("Control", selection: Binding(get: { model.source }, set: model.setSource)) {
+                    ForEach(MusicSource.allCases, id: \.self) { Text($0.displayName).tag($0) }
+                }
+                .pickerStyle(.segmented)
+            }
             Section("iPod Color") {
                 colorRow(presets: ThemePresets.body, color: $store.theme.bodyColor)
             }

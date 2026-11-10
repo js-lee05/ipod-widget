@@ -73,7 +73,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func makeCustomizeWindow() -> NSWindow {
-        let window = NSWindow(contentViewController: NSHostingController(rootView: CustomizeView(store: themeStore)))
+        let window = NSWindow(contentViewController: NSHostingController(rootView: CustomizeView(store: themeStore, model: model)))
         window.title = "Customize iPod"
         window.styleMask = [.titled, .closable]
         window.isReleasedWhenClosed = false
